@@ -1,5 +1,13 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+import {
+  loadTasks,
+  saveTasks,
+  addTask,
+  removeTask,
+  changeTaskStatus,
+} from "./taskLogic.js";
 
 const columns = [
   { id: "todo", title: "To Do" },
@@ -7,47 +15,64 @@ const columns = [
   { id: "done", title: "Done" },
 ];
 
-const initialTasks = [
-  {
-    id: 1,
-    title: "Design task creation form",
-    description: "Create a form for adding new tasks.",
-    status: "todo",
-    priority: "High",
-  },
-  {
-    id: 2,
-    title: "Implement task filtering",
-    description: "Filter tasks by status and priority.",
-    status: "todo",
-    priority: "Medium",
-  },
-  {
-    id: 3,
-    title: "Build Kanban board",
-    description: "Create the initial board layout.",
-    status: "progress",
-    priority: "High",
-  },
-  {
-    id: 4,
-    title: "Initialize repository",
-    description: "Configure the project structure.",
-    status: "done",
-    priority: "Low",
-  },
-];
+function getStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
-  const [tasks, setTasks] = useState(initialTasks);
+  const [tasks, setTasks] = useState(() =>
+    loadTasks(getStorage())
+  );
 
-  function changeStatus(taskId, newStatus) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState("Medium");
+  const [storageError, setStorageError] = useState(false);
+
+  useEffect(() => {
+    const saved = saveTasks(getStorage(), tasks);
+    setStorageError(!saved);
+  }, [tasks]);
+
+  function handleAddTask(event) {
+    event.preventDefault();
+
+    if (!title.trim()) return;
+
+    const id =
+      globalThis.crypto?.randomUUID?.() ??
+      `task-${Date.now()}-${Math.random()}`;
+
     setTasks((previous) =>
-      previous.map((task) =>
-        task.id === taskId
-          ? { ...task, status: newStatus }
-          : task
+      addTask(
+        previous,
+        { title, description, priority },
+        id
       )
+    );
+
+    setTitle("");
+    setDescription("");
+    setPriority("Medium");
+  }
+
+  function handleDeleteTask(task) {
+    if (!window.confirm(`Delete "${task.title}"?`)) {
+      return;
+    }
+
+    setTasks((previous) =>
+      removeTask(previous, task.id)
+    );
+  }
+
+  function handleStatusChange(id, status) {
+    setTasks((previous) =>
+      changeTaskStatus(previous, id, status)
     );
   }
 
@@ -58,7 +83,7 @@ export default function App() {
           <span className="brand-icon">O</span>
           <span>OpenBoard</span>
         </div>
-        <span className="version">Early Preview v0.1</span>
+        <span className="version">Preview v0.2</span>
       </header>
 
       <main className="main">
@@ -71,6 +96,65 @@ export default function App() {
             {tasks.length} Tasks
           </span>
         </div>
+
+        {storageError && (
+          <p className="storage-warning" role="alert">
+            Changes could not be saved in this browser.
+          </p>
+        )}
+
+        <section className="create-panel">
+          <h2>Create New Task</h2>
+
+          <form
+            className="task-form"
+            onSubmit={handleAddTask}
+          >
+            <label>
+              Task Title
+              <input
+                type="text"
+                value={title}
+                onChange={(event) =>
+                  setTitle(event.target.value)
+                }
+                placeholder="Enter task title"
+                maxLength={120}
+                required
+              />
+            </label>
+
+            <label>
+              Description
+              <input
+                type="text"
+                value={description}
+                onChange={(event) =>
+                  setDescription(event.target.value)
+                }
+                placeholder="Optional description"
+              />
+            </label>
+
+            <label>
+              Priority
+              <select
+                value={priority}
+                onChange={(event) =>
+                  setPriority(event.target.value)
+                }
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+              </select>
+            </label>
+
+            <button type="submit" className="add-button">
+              + Add Task
+            </button>
+          </form>
+        </section>
 
         <div className="board">
           {columns.map((column) => {
@@ -89,7 +173,10 @@ export default function App() {
 
                 <div className="task-list">
                   {columnTasks.map((task) => (
-                    <article className="task-card" key={task.id}>
+                    <article
+                      className="task-card"
+                      key={task.id}
+                    >
                       <div className="task-top">
                         <span
                           className={
@@ -99,9 +186,17 @@ export default function App() {
                         >
                           {task.priority}
                         </span>
-                        <span className="task-id">
-                          #{task.id}
-                        </span>
+
+                        <button
+                          type="button"
+                          className="delete-button"
+                          aria-label={`Delete ${task.title}`}
+                          onClick={() =>
+                            handleDeleteTask(task)
+                          }
+                        >
+                          Delete
+                        </button>
                       </div>
 
                       <h3>{task.title}</h3>
@@ -112,7 +207,7 @@ export default function App() {
                         <select
                           value={task.status}
                           onChange={(event) =>
-                            changeStatus(
+                            handleStatusChange(
                               task.id,
                               event.target.value
                             )
